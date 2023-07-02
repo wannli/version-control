@@ -1,33 +1,31 @@
-```python
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from starlette.middleware.cors import CORSMiddleware
 
-from database import SessionLocal, engine
-import models
-from routers import users, superusers, resolutions, suggestions
+from app.api import api_router
+from app.core import config
+from app.db import base, session
 
-models.Base.metadata.create_all(bind=engine)
+def create_application() -> FastAPI:
+    application = FastAPI(title=config.PROJECT_NAME, version=config.VERSION)
 
-app = FastAPI()
+    application.include_router(api_router, prefix=config.API_PREFIX)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[str(origin) for origin in config.BACKEND_CORS_ORIGINS],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-app.include_router(users.router)
-app.include_router(superusers.router)
-app.include_router(resolutions.router)
-app.include_router(suggestions.router)
+    return application
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-```
+app = create_application()
+
+@app.on_event("startup")
+async def startup_event():
+    base.Base.metadata.create_all(bind=session.engine)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await session.close_db_connection()
